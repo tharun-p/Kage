@@ -1,6 +1,7 @@
-# Kage - Ethereum State Store
+# Kage - Active Shadow Chain
 
-A persistent key-value store for Ethereum state data, built with Rust and RocksDB. This is the first component of an Ethereum transaction simulation project.
+A persistent flat KV store for Ethereum state data, built with Rust and RocksDB. Kage will monitor the address in the watchlist with active state following with the canonical chain tip. 
+This will be used in upcoming transaction simulation use cases in future.
 
 ## Features
 
