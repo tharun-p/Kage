@@ -1,0 +1,46 @@
+[package]
+name = "kage"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "statectl"
+path = "src/main.rs"
+
+[[bin]]
+name = "watcher"
+path = "src/watcher_main.rs"
+
+[dependencies]
+# Ethereum types
+alloy-primitives = { version = "0.4", features = ["serde"] }
+
+# Database
+rocksdb = "0.22"
+
+# Serialization
+postcard = { version = "1.0", features = ["alloc"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Hex parsing
+hex = "0.4"
+
+# HTTP client for JSON-RPC
+reqwest = { version = "0.11", features = ["json"] }
+
+# Async runtime
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "time", "macros", "signal"] }
+
+# Structured logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3.10"
