@@ -76,7 +76,38 @@ fn parse_address(s: &str) -> Result<Address> {
         anyhow::bail!("Address must be 20 bytes (40 hex chars), got {} bytes", bytes.len());
     }
     
-    Ok(Address::from_slice(&bytes))
+        Ok(Address::from_slice(&bytes))
+}
+
+/// Load a token watchlist from a file.
+///
+/// Each line should contain one ERC20 token contract address in hex format.
+/// Empty lines and lines starting with '#' are ignored.
+///
+/// # Example file format:
+/// ```
+/// # USDT on mainnet
+/// 0xdAC17F958D2ee523a2206206994597C13D831ec7
+/// # USDC on mainnet
+/// 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
+/// ```
+pub fn load_token_watchlist(path: &Path) -> Result<Vec<Address>> {
+    let contents = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read token watchlist file: {:?}", path))?;
+
+    let mut addresses = Vec::new();
+    for (line_num, line) in contents.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let addr = parse_address(line).with_context(|| {
+            format!("Invalid token address on line {}: {}", line_num + 1, line)
+        })?;
+        addresses.push(addr);
+    }
+
+    Ok(addresses)
 }
 
 #[cfg(test)]

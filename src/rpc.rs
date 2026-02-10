@@ -3,7 +3,7 @@
 //! Provides a typed interface to Ethereum JSON-RPC endpoints.
 //! Handles hex string parsing and error handling.
 
-use crate::types::{Block, Receipt};
+use crate::types::{Block, CallTrace, Receipt};
 use alloy_primitives::{Address, B256, U256};
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
@@ -220,6 +220,85 @@ impl RpcClient {
         };
         
         hex::decode(&code_str).context("Failed to decode code hex")
+    }
+
+    /// Generic eth_call for arbitrary contract calls.
+    ///
+    /// `to` is the contract address, `data` is the ABI-encoded call data (hex string).
+    /// `block` can be "latest", "0x123", etc.
+    pub async fn eth_call(&self, to: Address, data: &[u8], block: &str) -> Result<Vec<u8>> {
+        let to_str = format!("0x{:x}", to);
+        let data_str = format!("0x{}", hex::encode(data));
+        let params = json!([{
+            "to": to_str,
+            "data": data_str
+        }, block]);
+
+        let result = self.call("eth_call", params).await?;
+        let hex_str = result
+            .as_str()
+            .context("eth_call result is not a string")?;
+
+        let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+        if hex_str.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let s = if hex_str.len() % 2 == 1 {
+            format!("0{}", hex_str)
+        } else {
+            hex_str.to_string()
+        };
+        hex::decode(&s).context("Failed to decode eth_call result")
+    }
+
+    /// Get ERC20 balanceOf(owner) for a token contract.
+    ///
+    /// Encodes the balanceOf(address) call: selector 0x70a08231 + 32-byte padded address.
+    pub async fn erc20_balance_of(
+        &self,
+        token: Address,
+        owner: Address,
+        block: &str,
+    ) -> Result<U256> {
+        // balanceOf(address) selector: 0x70a08231
+        let mut data = vec![0x70, 0xa0, 0x82, 0x31];
+        // Pad address to 32 bytes (last 20 bytes)
+        let mut padded = [0u8; 32];
+        padded[12..32].copy_from_slice(owner.as_slice());
+        data.extend_from_slice(&padded);
+
+        let result = self.eth_call(token, &data, block).await?;
+        if result.len() < 32 {
+            anyhow::bail!("balanceOf returned insufficient data: {} bytes", result.len());
+        }
+        Ok(U256::from_be_slice(&result[0..32]))
+    }
+
+    /// Trace a transaction using the `callTracer`.
+    ///
+    /// This uses `debug_traceTransaction` with the built-in `callTracer`
+    /// and a configurable timeout (e.g. "10s").
+    pub async fn debug_trace_transaction_calltracer(
+        &self,
+        tx_hash: B256,
+        timeout: &str,
+    ) -> Result<CallTrace> {
+        let hash_str = format!("0x{:x}", tx_hash);
+        let params = json!([
+            hash_str,
+            {
+                "tracer": "callTracer",
+                "timeout": timeout,
+            }
+        ]);
+
+        let result = self
+            .call("debug_traceTransaction", params)
+            .await
+            .context("debug_traceTransaction RPC call failed")?;
+
+        serde_json::from_value(result).context("Failed to deserialize call trace")
     }
 }
 

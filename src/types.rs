@@ -87,6 +87,22 @@ impl Transaction {
     }
 }
 
+/// Log entry emitted by a contract during transaction execution.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Log {
+    /// Address of the contract that emitted the log
+    #[serde(rename = "address", deserialize_with = "deserialize_hex_address")]
+    pub address: Address,
+
+    /// Indexed topics (topic0 = event signature, topics[1..] = indexed params)
+    #[serde(rename = "topics", default)]
+    pub topics: Vec<String>,
+
+    /// Non-indexed event data (hex string)
+    #[serde(rename = "data", deserialize_with = "deserialize_hex_bytes")]
+    pub data: Vec<u8>,
+}
+
 /// Transaction receipt.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Receipt {
@@ -101,6 +117,10 @@ pub struct Receipt {
     /// Effective gas price (post-London, hex string in JSON)
     #[serde(rename = "effectiveGasPrice", deserialize_with = "deserialize_hex_u256_opt")]
     pub effective_gas_price: Option<U256>,
+
+    /// Logs emitted during transaction execution (empty for reverted txs)
+    #[serde(rename = "logs", default)]
+    pub logs: Vec<Log>,
 }
 
 impl Receipt {
@@ -113,6 +133,45 @@ impl Receipt {
     pub fn is_failure(&self) -> bool {
         self.status == 0
     }
+}
+
+/// Call trace node produced by `debug_traceTransaction` with `callTracer`.
+///
+/// We keep this struct intentionally liberal (many optional fields) so it
+/// can handle slightly different implementations across clients. For the
+/// internal transfer tracking use case we only care about:
+/// - `type`  (CALL / CALLCODE / STATICCALL / DELEGATECALL / SELFDESTRUCT / ...)
+/// - `from`  (sender address)
+/// - `to`    (receiver address, may be None for CREATE)
+/// - `value` (amount of wei transferred)
+/// - `calls` (nested children)
+#[derive(Debug, Clone, Deserialize)]
+pub struct CallTrace {
+    /// Call type: CALL / STATICCALL / DELEGATECALL / CALLCODE / SELFDESTRUCT / ...
+    #[serde(rename = "type")]
+    pub r#type: Option<String>,
+
+    /// Sender address (hex string in JSON, may be omitted in some edge cases).
+    #[serde(default, deserialize_with = "deserialize_hex_address_opt")]
+    pub from: Option<Address>,
+
+    /// Recipient address (hex string in JSON, None for CREATE-like nodes).
+    #[serde(default, deserialize_with = "deserialize_hex_address_opt")]
+    pub to: Option<Address>,
+
+    /// Value transferred in wei (hex string in JSON).
+    ///
+    /// Missing or empty values are treated as zero for robustness.
+    #[serde(default, deserialize_with = "deserialize_hex_u256_trace")]
+    pub value: U256,
+
+    /// Nested child calls.
+    #[serde(default)]
+    pub calls: Option<Vec<CallTrace>>,
+
+    /// Optional error / revert reason field used by some clients.
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 // Hex deserialization helpers
@@ -251,5 +310,30 @@ where
     } else {
         let s = pad_hex_string(&s);
         hex::decode(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Deserialize a hex string (or null / missing) to U256 for trace values.
+///
+/// This variant is a bit more forgiving than `deserialize_hex_u256`:
+/// - null / missing ⇒ 0
+/// - empty string  ⇒ 0
+fn deserialize_hex_u256_trace<'de, D>(deserializer: D) -> Result<U256, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = Option::<String>::deserialize(deserializer)?;
+    match s {
+        Some(s) => {
+            let s = s.strip_prefix("0x").unwrap_or(&s);
+            if s.is_empty() {
+                Ok(U256::ZERO)
+            } else {
+                let s = pad_hex_string(&s);
+                let bytes = hex::decode(&s).map_err(serde::de::Error::custom)?;
+                Ok(U256::from_be_slice(&bytes))
+            }
+        }
+        None => Ok(U256::ZERO),
     }
 }

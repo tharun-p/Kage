@@ -114,6 +114,7 @@ mod tests {
             status: 1,
             gas_used,
             effective_gas_price,
+            logs: vec![],
         }
     }
 

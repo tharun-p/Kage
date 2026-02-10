@@ -25,6 +25,10 @@ struct Args {
     #[arg(short, long, default_value = "watchlist.txt")]
     watchlist: PathBuf,
 
+    /// Path to token watchlist file (one ERC20 contract address per line, optional)
+    #[arg(short, long)]
+    tokens: Option<PathBuf>,
+
     /// Path to RocksDB database directory
     #[arg(short, long, default_value = "./state_db")]
     db_path: PathBuf,
@@ -54,9 +58,9 @@ async fn main() -> Result<()> {
     // Create watcher
     let mut watcher = Watcher::new(store, rpc);
 
-    // Initialize (load watchlist, fetch initial state)
+    // Initialize (load watchlist, fetch initial state, optionally ERC20 tokens)
     watcher
-        .initialize(&args.watchlist)
+        .initialize(&args.watchlist, args.tokens.as_deref())
         .await
         .context("Failed to initialize watcher")?;
 

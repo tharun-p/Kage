@@ -1,0 +1,3 @@
+# ERC20 token watchlist
+# One token contract address per line
+0x6e989C01a3e3A94C973A62280a72EC335598490e
